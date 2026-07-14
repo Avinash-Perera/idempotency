@@ -175,6 +175,16 @@ Client Request
 └─────────────────────────────────────────┘
 ```
 
+### 📖 Detailed Request Flow Documentation
+
+For a complete class-by-class trace of every request scenario (with Mermaid sequence diagrams), see:
+
+| Document | Description |
+|----------|-------------|
+| [Mode A — Global Filter Flow](docs/MODE_A_REQUEST_FLOW.md) | 5 scenarios: no header, new request, duplicate completed, duplicate in-progress, controller crash |
+| [Mode B — Interceptor Flow](docs/MODE_B_REQUEST_FLOW.md) | 6 scenarios: no header, no annotation, new request, duplicate completed, duplicate in-progress, controller crash |
+| [Edge Cases Handled](docs/EDGE_CASES.md) | Comprehensive list of edge cases handled across security, concurrency, failure, and configuration |
+
 ---
 
 ## 🔒 Security
