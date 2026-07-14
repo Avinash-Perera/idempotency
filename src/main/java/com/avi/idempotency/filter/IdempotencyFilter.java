@@ -14,8 +14,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.ContentCachingRequestWrapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -89,9 +91,17 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         // ── Mode overlap prevention ───────────────────────────────────────────
         request.setAttribute(ATTR_IDEMPOTENCY_CHECKED, true);
 
-        String principal    = resolvePrincipal(request);
-        String fingerprint  = FingerprintGenerator.generate(
-                idempotencyKey, request.getMethod(), request.getRequestURI(), principal);
+        // ── Optionally wrap request to allow body re-reading ─────────────────
+        HttpServletRequest effectiveRequest = config.includeBodyInFingerprint()
+                && !(request instanceof ContentCachingRequestWrapper)
+                ? new ContentCachingRequestWrapper(request, config.maxBodySizeBytes())
+                : request;
+
+        String principal   = resolvePrincipal(effectiveRequest);
+        String body        = resolveBody(effectiveRequest);
+        String fingerprint = FingerprintGenerator.generate(
+                idempotencyKey, effectiveRequest.getMethod(),
+                effectiveRequest.getRequestURI(), principal, body);
 
         ProcessResult result = processor.checkAndLock(fingerprint, store, config.defaultTtlSeconds());
 
@@ -119,9 +129,9 @@ public class IdempotencyFilter extends OncePerRequestFilter {
 
         try {
             if (isNewWrapper) {
-                chain.doFilter(request, wrappedResponse);
+                chain.doFilter(effectiveRequest, wrappedResponse);
             } else {
-                chain.doFilter(request, response); // pass the existing wrapper down
+                chain.doFilter(effectiveRequest, response); // pass the existing wrapper down
             }
 
             int status = wrappedResponse.getStatus();
@@ -191,5 +201,34 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         return request.getUserPrincipal() != null
                 ? request.getUserPrincipal().getName()
                 : null;
+    }
+
+    /**
+     * Reads the request body for fingerprinting when
+     * {@link IdempotencyConfig#includeBodyInFingerprint()} is enabled.
+     *
+     * <p>{@link ContentCachingRequestWrapper} buffers the body on first read so
+     * the downstream controller can still consume it normally via
+     * {@code @RequestBody}. When body fingerprinting is disabled this method
+     * returns {@code null} immediately (zero overhead).</p>
+     *
+     * @param request the (possibly wrapped) HTTP request
+     * @return the UTF-8 body string, or {@code null} if not applicable
+     */
+    private String resolveBody(HttpServletRequest request) throws IOException {
+        if (!config.includeBodyInFingerprint()) {
+            return null;
+        }
+        if (request instanceof ContentCachingRequestWrapper wrapper) {
+            // Force the body to be read and cached by the wrapper
+            byte[] bodyBytes = wrapper.getContentAsByteArray();
+            if (bodyBytes.length == 0) {
+                // Trigger an actual read if not yet cached
+                wrapper.getInputStream().readAllBytes();
+                bodyBytes = wrapper.getContentAsByteArray();
+            }
+            return new String(bodyBytes, StandardCharsets.UTF_8);
+        }
+        return null;
     }
 }

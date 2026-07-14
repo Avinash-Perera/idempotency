@@ -74,12 +74,12 @@ class IdempotencyFilterIntegrationTest {
 
         @Bean
         public InMemoryIdempotencyStore idempotencyStore() {
-            return new InMemoryIdempotencyStore(new IdempotencyConfig("Idempotency-Key", 3600L, 1000, 2097152, 2, java.util.Set.of()));
+            return new InMemoryIdempotencyStore(new IdempotencyConfig("Idempotency-Key", 3600L, 1000, 2097152, 2, java.util.Set.of(), false));
         }
 
         @Bean
         public IdempotencyConfig idempotencyConfig() {
-            return new IdempotencyConfig("Idempotency-Key", 3600L, 1000, 2097152, 2, java.util.Set.of());
+            return new IdempotencyConfig("Idempotency-Key", 3600L, 1000, 2097152, 2, java.util.Set.of(), false);
         }
 
         @Bean

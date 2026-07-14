@@ -34,7 +34,7 @@ class InMemoryIdempotencyStoreTest {
     @BeforeEach
     void setUp() {
         // Small capacity to make LRU eviction testable
-        IdempotencyConfig config = new IdempotencyConfig("Idempotency-Key", 3600L, 3, 2097152, 2, java.util.Set.of());
+        IdempotencyConfig config = new IdempotencyConfig("Idempotency-Key", 3600L, 3, 2097152, 2, java.util.Set.of(), false);
         store = new InMemoryIdempotencyStore(config);
     }
 

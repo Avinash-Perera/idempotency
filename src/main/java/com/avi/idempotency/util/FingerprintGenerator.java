@@ -21,6 +21,11 @@ import java.util.HexFormat;
  *   <li><b>Request URI</b> – scopes the key to an endpoint.</li>
  *   <li><b>Principal</b> (optional) – when present, prevents one authenticated
  *       user from replaying another user's idempotency record.</li>
+ *   <li><b>Request Body</b> (optional, opt-in) – when
+ *       {@link com.avi.idempotency.config.IdempotencyConfig#includeBodyInFingerprint()}
+ *       is {@code true}, the raw request body is included in the hash.
+ *       This prevents a client from sending a different body under the same
+ *       {@code Idempotency-Key} and receiving a stale cached response.</li>
  * </ol>
  *
  * <h2>Thread Safety</h2>
@@ -37,7 +42,9 @@ public final class FingerprintGenerator {
     private FingerprintGenerator() { /* utility class */ }
 
     /**
-     * Generates a hex-encoded SHA-256 fingerprint.
+     * Generates a hex-encoded SHA-256 fingerprint <em>without</em> including the
+     * request body. Equivalent to calling
+     * {@link #generate(String, String, String, String, String)} with {@code body = null}.
      *
      * @param idempotencyKey the raw value of the {@code Idempotency-Key} header
      * @param httpMethod     HTTP method (e.g. {@code "POST"})
@@ -50,15 +57,44 @@ public final class FingerprintGenerator {
             String httpMethod,
             String requestUri,
             @Nullable String principal) {
+        return generate(idempotencyKey, httpMethod, requestUri, principal, null);
+    }
 
-        String raw = idempotencyKey
-                + DELIMITER + httpMethod.toUpperCase()
-                + DELIMITER + requestUri
-                + DELIMITER + (principal != null ? principal : "anonymous");
+    /**
+     * Generates a hex-encoded SHA-256 fingerprint, optionally including the
+     * request body.
+     *
+     * <p>When {@code body} is non-null and non-blank, it is appended to the hash
+     * input after the principal, ensuring that two requests with the same
+     * {@code Idempotency-Key} but different bodies produce different fingerprints.</p>
+     *
+     * @param idempotencyKey the raw value of the {@code Idempotency-Key} header
+     * @param httpMethod     HTTP method (e.g. {@code "POST"})
+     * @param requestUri     the request URI path (e.g. {@code "/payments/charge"})
+     * @param principal      the authenticated username, or {@code null} for anonymous requests
+     * @param body           raw request body as a string, or {@code null} to exclude from hash
+     * @return 64-character lowercase hex SHA-256 string
+     */
+    public static String generate(
+            String idempotencyKey,
+            String httpMethod,
+            String requestUri,
+            @Nullable String principal,
+            @Nullable String body) {
+
+        StringBuilder raw = new StringBuilder()
+                .append(idempotencyKey)
+                .append(DELIMITER).append(httpMethod.toUpperCase())
+                .append(DELIMITER).append(requestUri)
+                .append(DELIMITER).append(principal != null ? principal : "anonymous");
+
+        if (body != null && !body.isBlank()) {
+            raw.append(DELIMITER).append(body);
+        }
 
         try {
             MessageDigest digest = MessageDigest.getInstance(ALGORITHM);
-            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(raw.toString().getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException e) {
             // SHA-256 is mandated by the Java SE spec — should never happen

@@ -15,10 +15,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.util.ContentCachingRequestWrapper;
 import com.avi.idempotency.filter.IdempotencyFilter;
 import com.avi.idempotency.filter.SizeLimitedResponseWrapper;
 
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -109,8 +111,9 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
                 : config.defaultTtlSeconds();
 
         String principal   = resolvePrincipal(request);
+        String body        = resolveBody(request);
         String fingerprint = FingerprintGenerator.generate(
-                idempotencyKey, request.getMethod(), request.getRequestURI(), principal);
+                idempotencyKey, request.getMethod(), request.getRequestURI(), principal, body);
 
         ProcessResult result = processor.checkAndLock(fingerprint, store, ttl);
 
@@ -154,7 +157,8 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             log.debug("Idempotency interceptor: lock released (error) fingerprint={}", fingerprint);
         } else {
             // Use wrapper placed by IdempotencyResponseWrapFilter if present,
-            // otherwise read directly from the response (body may be empty for simple cases)
+            // otherwise release the lock and warn — caching an empty body would
+            // cause silent replay of blank responses to duplicate requests.
             SizeLimitedResponseWrapper wrapper =
                     (response instanceof SizeLimitedResponseWrapper w)
                     ? w
@@ -165,10 +169,15 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
                 processor.completeSuccess(fingerprint, captured, store, ttl);
                 // Do NOT call copyBodyToResponse here — the wrapping filter handles flushing
             } else {
-                // Fallback: store with empty body but correct status
-                ResponseCapture.CapturedResponse captured =
-                        new ResponseCapture.CapturedResponse(response.getStatus(), java.util.Map.of(), "");
-                processor.completeSuccess(fingerprint, captured, store, ttl);
+                // SizeLimitedResponseWrapper was not present in the filter chain.
+                // Releasing the lock is safer than caching an empty-body COMPLETED record,
+                // which would replay blank responses to all future duplicate requests.
+                // Fix: ensure IdempotencyResponseWrapFilter is registered in your application.
+                log.warn("IdempotencyInterceptor: SizeLimitedResponseWrapper not present for " +
+                         "fingerprint={}. Releasing lock so the client can retry safely. " +
+                         "Ensure IdempotencyResponseWrapFilter is registered as a servlet filter.",
+                         fingerprint);
+                processor.releaseLock(fingerprint, store);
             }
         }
     }
@@ -205,5 +214,29 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         return request.getUserPrincipal() != null
                 ? request.getUserPrincipal().getName()
                 : null;
+    }
+
+    /**
+     * Reads the body from a {@link ContentCachingRequestWrapper} when
+     * {@link IdempotencyConfig#includeBodyInFingerprint()} is enabled.
+     *
+     * <p>The wrapper must have been placed in the filter chain by
+     * {@link IdempotencyFilter} (Mode A) or by a dedicated
+     * {@code ContentCachingRequestWrapper} filter before this interceptor runs.
+     * If the wrapper is absent and body fingerprinting is requested, this method
+     * returns {@code null} and logs a warning.</p>
+     */
+    private String resolveBody(HttpServletRequest request) {
+        if (!config.includeBodyInFingerprint()) {
+            return null;
+        }
+        if (request instanceof ContentCachingRequestWrapper wrapper) {
+            byte[] bytes = wrapper.getContentAsByteArray();
+            return bytes.length > 0 ? new String(bytes, StandardCharsets.UTF_8) : null;
+        }
+        log.warn("IdempotencyInterceptor: includeBodyInFingerprint=true but request is not a " +
+                 "ContentCachingRequestWrapper. Body will NOT be included in the fingerprint. " +
+                 "Register IdempotencyFilter (Mode A) or a ContentCachingFilter before the interceptor.");
+        return null;
     }
 }

@@ -70,12 +70,12 @@ public class RedisIdempotencyStore implements IdempotencyStore {
      * Atomically writes the record to Redis using {@code SET NX EX}.
      *
      * @return {@code true} if the key was newly created; {@code false} if it already existed.
+     * @throws IllegalStateException if the record cannot be serialised to JSON
      */
     @Override
     public boolean saveIfAbsent(IdempotencyRecord record) {
         String key  = redisKey(record.fingerprint());
-        String json = serialise(record);
-        if (json == null) return false;
+        String json = serialise(record); // throws IllegalStateException on failure
 
         Duration ttl = ttlFor(record);
         Boolean set  = redisTemplate.opsForValue().setIfAbsent(key, json, ttl);
@@ -85,8 +85,7 @@ public class RedisIdempotencyStore implements IdempotencyStore {
     @Override
     public void update(IdempotencyRecord record) {
         String key  = redisKey(record.fingerprint());
-        String json = serialise(record);
-        if (json == null) return;
+        String json = serialise(record); // throws IllegalStateException on failure
 
         Duration ttl = ttlFor(record);
         redisTemplate.opsForValue().set(key, json, ttl);
@@ -103,12 +102,20 @@ public class RedisIdempotencyStore implements IdempotencyStore {
         return KEY_PREFIX + fingerprint;
     }
 
+    /**
+     * Serialises the record to JSON.
+     *
+     * @throws IllegalStateException if serialisation fails — callers must not swallow this;
+     *         a serialisation failure means the lock was never written to Redis, so silently
+     *         returning {@code false} would allow duplicate processing.
+     */
     private String serialise(IdempotencyRecord record) {
         try {
             return objectMapper.writeValueAsString(record);
         } catch (JsonProcessingException e) {
-            log.error("Failed to serialise idempotency record for fingerprint={}", record.fingerprint(), e);
-            return null;
+            throw new IllegalStateException(
+                    "Failed to serialise idempotency record for fingerprint=" + record.fingerprint()
+                    + ". The idempotency lock was NOT written to Redis.", e);
         }
     }
 

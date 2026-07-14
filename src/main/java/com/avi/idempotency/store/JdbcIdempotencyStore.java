@@ -121,17 +121,15 @@ public class JdbcIdempotencyStore implements IdempotencyStore {
 
     @Override
     public Optional<IdempotencyRecord> get(String fingerprint) {
-        // Delete expired records implicitly on read
-        jdbcTemplate.update(
-                "DELETE FROM idempotency_records WHERE fingerprint = ? AND expires_at < ?",
-                fingerprint, Timestamp.from(Instant.now())
-        );
-
+        // Single query: fetch only non-expired records.
+        // Bulk deletion of expired rows is handled by the scheduled cleanup task
+        // (every hour), which is far more efficient than a per-request DELETE.
         try {
             IdempotencyRecord record = jdbcTemplate.queryForObject(
-                    "SELECT * FROM idempotency_records WHERE fingerprint = ?",
+                    "SELECT * FROM idempotency_records WHERE fingerprint = ? AND expires_at >= ?",
                     rowMapper(),
-                    fingerprint
+                    fingerprint,
+                    Timestamp.from(Instant.now())
             );
             return Optional.ofNullable(record);
         } catch (EmptyResultDataAccessException e) {

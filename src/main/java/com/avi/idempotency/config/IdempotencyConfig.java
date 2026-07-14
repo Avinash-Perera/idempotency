@@ -32,6 +32,16 @@ import java.util.Set;
  *                                  {@code X-New-Token} or
  *                                  {@code X-CSRF-Token} that must never be
  *                                  replayed to clients.
+ * @param includeBodyInFingerprint  When {@code true}, the SHA-256 fingerprint
+ *                                  includes the raw request body in addition
+ *                                  to the idempotency key, HTTP method, URI,
+ *                                  and principal. This prevents a client from
+ *                                  sending a different body under the same
+ *                                  {@code Idempotency-Key} and receiving a
+ *                                  stale cached response.
+ *                                  Defaults to {@code false} for backward
+ *                                  compatibility. Enable for financial and
+ *                                  mutation APIs.
  */
 public record IdempotencyConfig(
         String headerName,
@@ -39,7 +49,8 @@ public record IdempotencyConfig(
         int maxCapacity,
         int maxBodySizeBytes,
         int conflictRetryAfterSeconds,
-        Set<String> additionalStrippedHeaders) {
+        Set<String> additionalStrippedHeaders,
+        boolean includeBodyInFingerprint) {
     public IdempotencyConfig {
         if (headerName == null || headerName.isBlank()) {
             throw new IllegalArgumentException("Header name cannot be null or blank");
@@ -68,8 +79,9 @@ public record IdempotencyConfig(
      * - LRU Capacity: 10,000 entries
      * - Max Body Size: 2 MB (2097152 bytes)
      * - Conflict Retry After: 2 seconds
+     * - Body in fingerprint: disabled (opt-in per application needs)
      */
     public static IdempotencyConfig defaults() {
-        return new IdempotencyConfig("Idempotency-Key", 86400, 10000, 2097152, 2, Set.of());
+        return new IdempotencyConfig("Idempotency-Key", 86400, 10000, 2097152, 2, Set.of(), false);
     }
 }

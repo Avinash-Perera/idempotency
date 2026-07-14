@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- ─── Coordinates ─────────────────────────────────────────────────── -->
-    <groupId>io.github.avinashperera</groupId>
+    <groupId>io.github.avinash-perera</groupId>
     <artifactId>spring-boot-idempotency</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>jar</packaging>
 
     <!-- ─── Metadata ────────────────────────────────────────────────────── -->
@@ -243,16 +243,17 @@
                         </executions>
                     </plugin>
                     
-                    <!-- Nexus Staging Plugin (automates deployment to Maven Central) -->
+                    <!-- Central Publishing Plugin (for new Maven Central Portal) -->
                     <plugin>
-                        <groupId>org.sonatype.plugins</groupId>
-                        <artifactId>nexus-staging-maven-plugin</artifactId>
-                        <version>1.7.0</version>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.7.0</version>
                         <extensions>true</extensions>
                         <configuration>
-                            <serverId>ossrh</serverId>
-                            <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
-                            <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                            <publishingServerId>central</publishingServerId>
+                            <!-- autoPublish can be set to true to automatically release without manual review -->
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
                         </configuration>
                     </plugin>
                 </plugins>
