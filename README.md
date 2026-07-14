@@ -14,8 +14,8 @@
 | Feature | Detail |
 |---|---|
 | **Dual activation modes** | Global URL-pattern filter **and** per-endpoint `@Idempotent` annotation — they coexist seamlessly |
-| **Pluggable storage** | In-memory LRU store (zero config) or Redis for distributed deployments |
-| **SHA-256 fingerprinting** | Scopes keys by method + URI + optional authenticated user |
+| **Pluggable storage** | In-memory LRU store (zero config), Redis, or JDBC (SQL database) for distributed deployments |
+| **SHA-256 fingerprinting** | Scopes keys by method + URI + optional authenticated user + optional request body |
 | **Atomic locking** | `ConcurrentHashMap.putIfAbsent` (in-memory) or Redis `SET NX EX` (Redis) |
 | **Automatic lock release** | 5xx responses and exceptions release the lock so clients can safely retry |
 | **Security** | `Set-Cookie` / `Set-Cookie2` headers are stripped before caching |
@@ -40,7 +40,7 @@ Financial and payment systems require rigorous end-to-end testing. You are solel
 <dependency>
     <groupId>io.github.avinashperera</groupId>
     <artifactId>spring-boot-idempotency</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -51,6 +51,8 @@ For Redis-backed storage, also add:
     <artifactId>spring-boot-starter-data-redis</artifactId>
 </dependency>
 ```
+
+For JDBC-backed storage, ensure you have `spring-boot-starter-jdbc` and a database configured.
 
 ---
 
@@ -122,7 +124,11 @@ public class MyIdempotencyConfig {
         return new IdempotencyConfig(
             "X-Request-Id",  // header name
             3_600L,          // default TTL: 1 hour
-            50_000           // max in-memory capacity
+            50_000,          // max in-memory capacity
+            2097152,         // max body size in bytes
+            2,               // conflict retry after seconds
+            java.util.Set.of(), // additional stripped headers
+            true             // include body in fingerprint
         );
     }
 
@@ -141,6 +147,7 @@ public class MyIdempotencyConfig {
 | `headerName` | `Idempotency-Key` | HTTP request header carrying the idempotency key |
 | `defaultTtlSeconds` | `86400` (24h) | Cache TTL used when `@Idempotent` has no override |
 | `maxCapacity` | `10000` | Max entries for the in-memory LRU store |
+| `includeBodyInFingerprint`| `false` | When `true`, hashes the request body into the fingerprint to prevent body tampering under the same key |
 
 ---
 

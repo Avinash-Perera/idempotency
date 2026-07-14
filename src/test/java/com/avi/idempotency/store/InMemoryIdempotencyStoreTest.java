@@ -20,10 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link InMemoryIdempotencyStore} covering:
  * <ul>
- *   <li>LRU eviction when capacity is exceeded</li>
- *   <li>TTL-based expiry</li>
- *   <li>Atomic {@code saveIfAbsent} under concurrency</li>
- *   <li>State transitions (IN_PROGRESS → COMPLETED)</li>
+ * <li>LRU eviction when capacity is exceeded</li>
+ * <li>TTL-based expiry</li>
+ * <li>Atomic {@code saveIfAbsent} under concurrency</li>
+ * <li>State transitions (IN_PROGRESS → COMPLETED)</li>
  * </ul>
  */
 @DisplayName("InMemoryIdempotencyStore")
@@ -34,7 +34,8 @@ class InMemoryIdempotencyStoreTest {
     @BeforeEach
     void setUp() {
         // Small capacity to make LRU eviction testable
-        IdempotencyConfig config = new IdempotencyConfig("Idempotency-Key", 3600L, 3, 2097152, 2, java.util.Set.of(), false);
+        IdempotencyConfig config = new IdempotencyConfig("Idempotency-Key", 3600L, 3, 2097152, 2, java.util.Set.of(),
+                false);
         store = new InMemoryIdempotencyStore(config);
     }
 
@@ -102,7 +103,7 @@ class InMemoryIdempotencyStoreTest {
         assertThat(store.get("a")).isPresent(); // recently accessed
         assertThat(store.get("c")).isPresent(); // recently accessed
         assertThat(store.get("d")).isPresent(); // just added
-        assertThat(store.get("b")).isEmpty();   // evicted as LRU
+        assertThat(store.get("b")).isEmpty(); // evicted as LRU
     }
 
     @Test
@@ -144,8 +145,7 @@ class InMemoryIdempotencyStoreTest {
                 0,
                 Map.of(),
                 "",
-                Instant.now().minusSeconds(1)
-        );
+                Instant.now().minusSeconds(1));
         store.saveIfAbsent(expired);
 
         IdempotencyRecord fresh = IdempotencyRecord.inProgress("fp-overwrite", 3600L);
@@ -163,7 +163,7 @@ class InMemoryIdempotencyStoreTest {
         int threads = 20;
         AtomicInteger acquiredCount = new AtomicInteger(0);
         CountDownLatch startLatch = new CountDownLatch(1);
-        CountDownLatch doneLatch  = new CountDownLatch(threads);
+        CountDownLatch doneLatch = new CountDownLatch(threads);
 
         ExecutorService pool = Executors.newFixedThreadPool(threads);
 
